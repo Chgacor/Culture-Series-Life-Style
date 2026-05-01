@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Hammer, Timer, Calendar, Target, Plus, 
-  ChevronRight, Library, Zap, CheckCircle2, 
-  AlertTriangle, Globe, GitBranch, Code2, Trash2 
+  ChevronRight, Library, Zap, CheckCircle2,
+  AlertTriangle, Globe, GitBranch, Code2, Trash2, Pencil
 } from 'lucide-react';
 
 const formatTgl = (date: string) => new Date(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -14,6 +14,7 @@ export default function TheForgePage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [editingProject, setEditingProject] = useState<any | null>(null);
 
   // STATE FORM BARU: Dilengkapi Time-Blocking & Arsenal Vault
   const [newProject, setNewProject] = useState({
@@ -31,7 +32,23 @@ export default function TheForgePage() {
 
   useEffect(() => { fetchForge(); }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleEditClick = (project: any) => {
+    setIsAdding(true);
+    setEditingProject(project);
+    // Pre-fill form with existing data
+    setNewProject({
+      title: project.title,
+      category: project.category,
+      deadline: new Date(project.deadline).toISOString().split('T')[0], // Format for date input
+      daily_hours: project.tech_stack?.daily_hours || '',
+      start_time: project.tech_stack?.start_time || '',
+      web_link: project.tech_stack?.web || '',
+      repo_link: project.tech_stack?.repo || '',
+      asset_link: project.tech_stack?.asset || '',
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
@@ -56,41 +73,70 @@ export default function TheForgePage() {
       const techStackPayload = {
         web: newProject.web_link,
         repo: newProject.repo_link,
-        asset: newProject.asset_link
+        asset: newProject.asset_link,
+        daily_hours: newProject.daily_hours,
+        start_time: newProject.start_time,
       };
 
-      // 3. SIMPAN KE TABEL FORGE
-      const { error: forgeError } = await supabase.from('projects_forge').insert([{
-        title: newProject.title,
-        category: newProject.category,
-        deadline: newProject.deadline,
-        target_hours: totalTargetHours, // Menyimpan total keseluruhan
-        current_hours: 0,
-        status: 'active',
-        tech_stack: techStackPayload // Menyimpan URL referensi
-      }]);
+      if (editingProject) {
+        // UPDATE LOGIC
+        const { error: forgeError } = await supabase.from('projects_forge').update({
+          title: newProject.title,
+          category: newProject.category,
+          deadline: newProject.deadline,
+          target_hours: totalTargetHours,
+          tech_stack: techStackPayload
+        }).eq('id', editingProject.id);
 
-      if (forgeError) throw forgeError;
+        if (forgeError) throw forgeError;
 
-      // 4. AUTO-INJECT KE DAILY HUB (TIME-BLOCKED)
-      const { error: taskError } = await supabase.from('life_tasks').insert([{
-        title: `Forge: ${newProject.title}`,
-        task_type: 'timed',                 // <-- Memicu Timer 45/5 di Daily Hub
-        start_time: newProject.start_time,  // Jam mulai
-        end_time: endTime,                  // Jam selesai otomatis
-        target_date: new Date().toISOString().split('T')[0],
-        is_recurring: true,                 // Jadwal rutin tiap hari
-        is_completed: false,
-        recurrence_end_date: newProject.deadline
-      }]);
+        // Update corresponding task in Daily Hub
+        const { error: taskError } = await supabase.from('life_tasks').update({
+          title: `Forge: ${newProject.title}`,
+          start_time: newProject.start_time,
+          end_time: endTime,
+          recurrence_end_date: newProject.deadline
+        }).ilike('title', `%Forge: ${editingProject.title}%`);
 
-      if (taskError) {
-        console.error("Error Inject Daily Hub:", taskError);
-        alert(`Gagal membuat Time Block di Jadwal Harian: ${taskError.message}`);
+        if (taskError) {
+          console.warn("Could not update Daily Hub task (it might not exist or title changed manually):", taskError);
+        }
+      } else {
+        // CREATE LOGIC
+        // 3. SIMPAN KE TABEL FORGE
+        const { error: forgeError } = await supabase.from('projects_forge').insert([{
+          title: newProject.title,
+          category: newProject.category,
+          deadline: newProject.deadline,
+          target_hours: totalTargetHours, // Menyimpan total keseluruhan
+          current_hours: 0,
+          status: 'active',
+          tech_stack: techStackPayload // Menyimpan URL referensi
+        }]);
+
+        if (forgeError) throw forgeError;
+
+        // 4. AUTO-INJECT KE DAILY HUB (TIME-BLOCKED)
+        const { error: taskError } = await supabase.from('life_tasks').insert([{
+          title: `Forge: ${newProject.title}`,
+          task_type: 'timed',                 // <-- Memicu Timer 45/5 di Daily Hub
+          start_time: newProject.start_time,  // Jam mulai
+          end_time: endTime,                  // Jam selesai otomatis
+          target_date: new Date().toISOString().split('T')[0],
+          is_recurring: true,                 // Jadwal rutin tiap hari
+          is_completed: false,
+          recurrence_end_date: newProject.deadline
+        }]);
+
+        if (taskError) {
+          console.error("Error Inject Daily Hub:", taskError);
+          alert(`Gagal membuat Time Block di Jadwal Harian: ${taskError.message}`);
+        }
       }
 
       // Reset Form & Refresh
       setIsAdding(false);
+      setEditingProject(null);
       setNewProject({ 
         title: '', category: 'Software Architecture', deadline: '', 
         daily_hours: '', start_time: '', web_link: '', repo_link: '', asset_link: '' 
@@ -121,7 +167,16 @@ export default function TheForgePage() {
           <p className="text-gray-500 text-sm font-mono uppercase tracking-widest mt-1">Time-Blocked Intellectual Chamber</p>
         </div>
         <button 
-          onClick={() => setIsAdding(!isAdding)}
+          onClick={() => {
+            if (isAdding) {
+              setIsAdding(false);
+              setEditingProject(null);
+              setNewProject({ title: '', category: 'Software Architecture', deadline: '', daily_hours: '', start_time: '', web_link: '', repo_link: '', asset_link: '' });
+            } else {
+              setIsAdding(true);
+              setEditingProject(null);
+            }
+          }}
           className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/20"
         >
           {isAdding ? 'Cancel' : <><Zap size={18}/> Draft New Project</>}
@@ -132,7 +187,8 @@ export default function TheForgePage() {
       {/* FORM DRAFTING DENGAN TIME-BLOCKING & VAULT */}
       {isAdding && (
         <div className="bg-white dark:bg-[#151515] p-8 rounded-[32px] border-2 border-orange-500/20 shadow-2xl animate-in fade-in zoom-in duration-200">
-          <form onSubmit={handleCreate} className="space-y-6">
+          <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">{editingProject ? 'Edit Blueprint' : 'Draft New Project'}</h3>
+          <form onSubmit={handleSubmit} className="space-y-6">
             
             {/* Row 1: Core Info */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -178,7 +234,9 @@ export default function TheForgePage() {
               </div>
             </div>
 
-            <button type="submit" className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-black py-4 rounded-2xl hover:opacity-80 transition-opacity uppercase tracking-widest shadow-xl mt-4">INITIATE FORGE & TIME BLOCK</button>
+            <button type="submit" className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-black py-4 rounded-2xl hover:opacity-80 transition-opacity uppercase tracking-widest shadow-xl mt-4">
+              {editingProject ? 'Update Blueprint' : 'Initiate Forge & Time Block'}
+            </button>
           </form>
         </div>
       )}
@@ -204,7 +262,10 @@ export default function TheForgePage() {
               <div className="p-8 flex-1">
                 <div className="flex justify-between items-start mb-6">
                   <div className="p-3 bg-orange-500/10 text-orange-500 rounded-2xl"><Code2 size={24}/></div>
-                  <button onClick={() => deleteProject(proj.id, proj.title)} className="text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleEditClick(proj)} className="text-gray-400 hover:text-blue-500 transition-colors"><Pencil size={18}/></button>
+                    <button onClick={() => deleteProject(proj.id, proj.title)} className="text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                  </div>
                 </div>
 
                 <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2">{proj.title}</h3>
