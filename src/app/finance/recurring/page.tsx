@@ -108,9 +108,13 @@ export default function RecurringPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12">
-      <header>
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Recurring Expenses 🔄</h2>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">Manajemen tagihan otomatis dan audit layanan digital.</p>
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#121212] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm transition-colors duration-300">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Recurring Expenses 🔄
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Manajemen tagihan otomatis dan audit layanan digital.</p>
+        </div>
       </header>
 
       {/* --- SUBSCRIPTION AUDIT DASHBOARD --- */}
