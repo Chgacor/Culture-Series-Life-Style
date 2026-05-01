@@ -58,11 +58,13 @@ export default async function LedgerPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 md:space-y-8 pb-20">
-      <header>
-        <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">
-          Ledger & Analytics <BookOpen className="text-blue-600 dark:text-blue-500" size={28} />
-        </h2>
-        <p className="text-gray-500 mt-1 text-xs md:text-sm">Pantau arus kas harianmu secara presisi.</p>
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#121212] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm transition-colors duration-300">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">
+            Ledger & Analytics <BookOpen className="text-blue-600 dark:text-blue-500" size={28} />
+          </h2>
+          <p className="text-gray-500 mt-1 text-xs md:text-sm">Pantau arus kas harianmu secara presisi.</p>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
