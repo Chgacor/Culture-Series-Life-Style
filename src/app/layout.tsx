@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import Sidebar from "@/components/Sidebar";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Culture Life OS",
-  description: "Personal Lifestyle & Financial System",
+  title: "CultureOS | The Forge",
+  description: "Intellectual and Financial Life Command System",
 };
 
 export default function RootLayout({
@@ -17,21 +16,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} bg-white dark:bg-[#121212] text-black dark:text-white transition-colors duration-300`}>
+    <html lang="id" suppressHydrationWarning>
+      <body className={`${inter.className} bg-gray-50 dark:bg-[#121212] text-gray-900 dark:text-white antialiased`}>
+        {/* Kita bungkus seluruh aplikasi dengan ThemeProvider untuk fitur Dark Mode */}
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-          {/* Membagi layar: Sidebar di kiri, Konten di kanan */}
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-              {children}
-            </main>
-          </div>
+          {/* Perhatikan: Tidak ada pemanggilan <Sidebar /> di sini.
+            Isi (children) ini akan langsung digantikan oleh halaman Login, 
+            atau digantikan oleh Layout (culture-lifestyle) yang sudah punya Sidebar-nya sendiri.
+          */}
+          {children}
         </ThemeProvider>
       </body>
     </html>
