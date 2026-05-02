@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: 'class', // <--- INI WAJIB ADA BOSS!
+  darkMode: 'selector', // Using 'selector' is recommended for newer versions of Tailwind
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
