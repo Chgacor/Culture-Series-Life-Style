@@ -47,7 +47,7 @@ export default function CalendarFinancePage() {
 
     let currentRunningBalance = currentTotalBalance;
     const newTimeline: any[] = [];
-    let newWorstDayInsight: InsightData | null = null;
+    let newWorstDayInsight: any = null;
 
     upcomingDays.forEach(date => {
       const dayDate = date.getDate();
