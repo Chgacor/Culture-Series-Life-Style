@@ -36,7 +36,7 @@ export default function CultureLayout({ children }: { children: React.ReactNode 
 
   // Jika lolos, render Sidebar dan konten halamannya
   return (
-    <div className="flex bg-gray-50 dark:bg-[#121212] min-h-screen">
+    <div className="flex bg-gray-50 dark:bg-[#121212] min-h-screen transition-colors duration-300">
       <Sidebar />
       <main className="flex-1 w-full overflow-x-hidden p-4 md:p-8">
         {children}
