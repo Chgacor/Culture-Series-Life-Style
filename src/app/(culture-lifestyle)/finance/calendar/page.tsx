@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CalendarDays, AlertTriangle, TrendingDown, ArrowRight, Wallet } from 'lucide-react';
 
@@ -35,56 +35,57 @@ export default function CalendarFinancePage() {
 
   const formatRupiah = (angka: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka);
 
-  // --- MESIN TIME-TRAVEL (CASH FLOW PREDICTION) ---
-  const currentTotalBalance = wallets.reduce((sum, w) => sum + Number(w.balance), 0);
-  
-  const today = new Date();
-  const upcomingDays = Array.from({ length: 30 }).map((_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return d;
-  });
+  const currentTotalBalance = useMemo(() => wallets.reduce((sum, w) => sum + Number(w.balance), 0), [wallets]);
 
-  let runningBalance = currentTotalBalance;
-  const timeline: any[] = [];
-  
-  // Memasang cetakan InsightData ke variabel agar TypeScript tenang
-  let worstDayInsight: InsightData | null = null;
+  const { timeline, worstDayInsight, runningBalance } = useMemo(() => {
+    const today = new Date();
+    const upcomingDays = Array.from({ length: 30 }).map((_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
 
-  upcomingDays.forEach(date => {
-    const dayDate = date.getDate(); 
-    const monthStr = date.toLocaleString('id-ID', { month: 'short' });
-    
-    const dueBills = subscriptions.filter(sub => sub.billing_date === dayDate);
-    
-    if (dueBills.length > 0) {
-      const totalBillsToday = dueBills.reduce((sum, sub) => sum + Number(sub.amount), 0);
-      const billNamesArray = dueBills.map(b => b.name);
-      let billNames = billNamesArray.join(', ');
-      if (billNamesArray.length > 1) {
-        billNames = billNamesArray.slice(0, -1).join(', ') + ' dan ' + billNamesArray[billNamesArray.length - 1];
-      }
-      
-      runningBalance -= totalBillsToday;
+    let currentRunningBalance = currentTotalBalance;
+    const newTimeline: any[] = [];
+    let newWorstDayInsight: InsightData | null = null;
 
-      timeline.push({
-        date: `${dayDate} ${monthStr}`,
-        fullDate: date,
-        bills: dueBills,
-        totalDeduction: totalBillsToday,
-        predictedBalance: runningBalance
-      });
+    upcomingDays.forEach(date => {
+      const dayDate = date.getDate();
+      const monthStr = date.toLocaleString('id-ID', { month: 'short' });
 
-      if (!worstDayInsight || totalBillsToday > worstDayInsight.totalDeduction) {
-        worstDayInsight = {
+      const dueBills = subscriptions.filter(sub => sub.billing_date === dayDate);
+
+      if (dueBills.length > 0) {
+        const totalBillsToday = dueBills.reduce((sum, sub) => sum + Number(sub.amount), 0);
+        const billNamesArray = dueBills.map(b => b.name);
+        let billNames = billNamesArray.join(', ');
+        if (billNamesArray.length > 1) {
+          billNames = billNamesArray.slice(0, -1).join(', ') + ' dan ' + billNamesArray[billNamesArray.length - 1];
+        }
+
+        currentRunningBalance -= totalBillsToday;
+
+        newTimeline.push({
           date: `${dayDate} ${monthStr}`,
-          billNames: billNames,
-          predictedBalance: runningBalance,
-          totalDeduction: totalBillsToday
-        };
+          fullDate: date,
+          bills: dueBills,
+          totalDeduction: totalBillsToday,
+          predictedBalance: currentRunningBalance
+        });
+
+        if (!newWorstDayInsight || currentRunningBalance < newWorstDayInsight.predictedBalance) {
+          newWorstDayInsight = {
+            date: `${dayDate} ${monthStr}`,
+            billNames: billNames,
+            predictedBalance: currentRunningBalance,
+            totalDeduction: totalBillsToday
+          };
+        }
       }
-    }
-  });
+    });
+
+    return { timeline: newTimeline, worstDayInsight: newWorstDayInsight, runningBalance: currentRunningBalance };
+  }, [subscriptions, currentTotalBalance]);
 
   if (loading) return <div className="p-8 text-center text-gray-500 animate-pulse">Menghitung probabilitas masa depan...</div>;
 
@@ -104,7 +105,7 @@ export default function CalendarFinancePage() {
           <div>
             <h3 className="text-orange-100 font-medium mb-2 uppercase tracking-wider text-sm">Prediksi Arus Kas (Cash Flow)</h3>
             <p className="text-xl lg:text-2xl font-medium leading-relaxed">
-              "Di tanggal <span className="font-bold border-b-2 border-white">{worstDayInsight?.date}</span> nanti, sisa saldomu diprediksi tinggal <span className="font-bold text-yellow-300">{formatRupiah(worstDayInsight?.predictedBalance || 0)}</span> karena ada pemotongan otomatis untuk tagihan <span className="font-bold">{worstDayInsight?.billNames}</span>."
+              "Di tanggal <span className="font-bold border-b-2 border-white">{worstDayInsight.date}</span> nanti, sisa saldomu diprediksi tinggal <span className="font-bold text-yellow-300">{formatRupiah(worstDayInsight.predictedBalance || 0)}</span> karena ada pemotongan otomatis untuk tagihan <span className="font-bold">{worstDayInsight.billNames}</span>."
             </p>
           </div>
         </div>
