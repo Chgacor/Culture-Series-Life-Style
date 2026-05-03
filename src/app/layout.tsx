@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CultureOS | The Forge",
+  title: "Culture - Lifestyle",
   description: "Intellectual and Financial Life Command System",
 };
 
