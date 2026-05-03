@@ -36,15 +36,31 @@ export default function OracleScenariosPage() {
   const fetchOracleData = async () => {
     setLoading(true);
     
-    // 1. Ambil Proyek
-    const { data: projects } = await supabase.from('wishes').select('*').order('created_at', { ascending: false });
+    // 0. WAJIB: Ambil KTP User
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    
+    // 1. Ambil Proyek (Hanya milik user)
+    const { data: projects } = await supabase
+      .from('wishes')
+      .select('*')
+      .eq('user_id', user.id) // <--- KUNCI 1
+      .order('created_at', { ascending: false });
+      
     if (projects) {
       setActiveProjects(projects.filter(p => p.saved_amount < p.target_fund));
       setCompletedProjects(projects.filter(p => p.saved_amount >= p.target_fund));
     }
 
-    // 2. Ambil Total Emas & Harga
-    const { data: gold } = await supabase.from('gold_assets').select('grams');
+    // 2. Ambil Total Emas & Harga (Hanya emas milik user)
+    const { data: gold } = await supabase
+      .from('gold_assets')
+      .select('grams')
+      .eq('user_id', user.id); // <--- KUNCI 2
+      
     const totalGrams = gold?.reduce((sum, g) => sum + Number(g.grams), 0) || 0;
     setGoldGrams(totalGrams);
 
@@ -54,8 +70,13 @@ export default function OracleScenariosPage() {
       setGoldPriceSell(data.sell_price || 0);
     } catch (e) { console.error("Price fetch failed"); }
 
-    // 3. Ambil Biaya Langganan dari Tabel Asli ('subscriptions')
-    const { data: expenses } = await supabase.from('subscriptions').select('*').order('amount', { ascending: false });
+    // 3. Ambil Biaya Langganan (Hanya tagihan milik user)
+    const { data: expenses } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id) // <--- KUNCI 3
+      .order('amount', { ascending: false });
+      
     if (expenses) {
       // Format data DB agar seragam dengan object Sacrifice
       const formattedSubs = expenses.map(e => ({
@@ -88,7 +109,7 @@ export default function OracleScenariosPage() {
     .reduce((sum, s) => sum + s.monthly, 0);
 
   if (loading) return <div className="p-20 text-center animate-pulse text-gray-500 font-mono text-sm">Consulting The Oracle...</div>;
-
+  
   return (
     <div className="max-w-7xl mx-auto space-y-6 md:space-y-8 pb-20 relative">
       

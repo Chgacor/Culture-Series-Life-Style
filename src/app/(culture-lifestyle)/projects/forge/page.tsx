@@ -15,6 +15,7 @@ export default function TheForgePage() {
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [editingProject, setEditingProject] = useState<any | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<any | null>(null);
 
   // STATE FORM BARU: Dilengkapi Time-Blocking & Arsenal Vault
   const [newProject, setNewProject] = useState({
@@ -25,7 +26,15 @@ export default function TheForgePage() {
 
   const fetchForge = async () => {
     setLoading(true);
-    const { data } = await supabase.from('projects_forge').select('*').order('created_at', { ascending: false });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('projects_forge')
+      .select('*')
+      .eq('user_id', user.id) // <--- GEMBOK KEAMANAN
+      .order('created_at', { ascending: false });
+      
     if (data) setProjects(data);
     setLoading(false);
   };
@@ -78,52 +87,74 @@ export default function TheForgePage() {
         start_time: newProject.start_time,
       };
 
+      await handleSaveProject(totalTargetHours, techStackPayload, endTime);
+    } catch (err: any) {
+      console.error("Critical Error Forge:", err);
+      alert("Gagal merakit Blueprint Forge: " + err.message);
+    }
+  };
+
+  const handleSaveProject = async (totalTargetHours: number, techStackPayload: any, endTime: string) => {
+    try {
+      // 1. WAJIB: Ambil KTP User sebelum melakukan operasi apa pun
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert("Sesi telah habis. Silakan login kembali.");
+        return;
+      }
+
       if (editingProject) {
-        // UPDATE LOGIC
+        // --- UPDATE LOGIC ---
         const { error: forgeError } = await supabase.from('projects_forge').update({
           title: newProject.title,
           category: newProject.category,
           deadline: newProject.deadline,
           target_hours: totalTargetHours,
           tech_stack: techStackPayload
-        }).eq('id', editingProject.id);
+        })
+        .eq('id', editingProject.id)
+        .eq('user_id', user.id); // <--- KUNCI UPDATE
 
         if (forgeError) throw forgeError;
 
-        // Update corresponding task in Daily Hub
+        // Update corresponding task in Daily Hub (Aman karena dikunci user_id)
         const { error: taskError } = await supabase.from('life_tasks').update({
           title: `Forge: ${newProject.title}`,
           start_time: newProject.start_time,
           end_time: endTime,
           recurrence_end_date: newProject.deadline
-        }).ilike('title', `%Forge: ${editingProject.title}%`);
+        })
+        .ilike('title', `%Forge: ${editingProject.title}%`)
+        .eq('user_id', user.id); // <--- KUNCI UPDATE TASK
 
         if (taskError) {
-          console.warn("Could not update Daily Hub task (it might not exist or title changed manually):", taskError);
+          console.warn("Could not update Daily Hub task:", taskError);
         }
       } else {
-        // CREATE LOGIC
-        // 3. SIMPAN KE TABEL FORGE
+        // --- CREATE LOGIC ---
+        // 3. SIMPAN KE TABEL FORGE DENGAN KTP
         const { error: forgeError } = await supabase.from('projects_forge').insert([{
+          user_id: user.id, // <--- SUNTIKAN KTP UTAMA
           title: newProject.title,
           category: newProject.category,
           deadline: newProject.deadline,
-          target_hours: totalTargetHours, // Menyimpan total keseluruhan
+          target_hours: totalTargetHours,
           current_hours: 0,
           status: 'active',
-          tech_stack: techStackPayload // Menyimpan URL referensi
+          tech_stack: techStackPayload
         }]);
 
         if (forgeError) throw forgeError;
 
-        // 4. AUTO-INJECT KE DAILY HUB (TIME-BLOCKED)
+        // 4. AUTO-INJECT KE DAILY HUB DENGAN KTP
         const { error: taskError } = await supabase.from('life_tasks').insert([{
+          user_id: user.id, // <--- SUNTIKAN KTP JADWAL
           title: `Forge: ${newProject.title}`,
-          task_type: 'timed',                 // <-- Memicu Timer 45/5 di Daily Hub
-          start_time: newProject.start_time,  // Jam mulai
-          end_time: endTime,                  // Jam selesai otomatis
+          task_type: 'timed',
+          start_time: newProject.start_time,
+          end_time: endTime,
           target_date: new Date().toISOString().split('T')[0],
-          is_recurring: true,                 // Jadwal rutin tiap hari
+          is_recurring: true,
           is_completed: false,
           recurrence_end_date: newProject.deadline
         }]);
@@ -149,16 +180,49 @@ export default function TheForgePage() {
     }
   };
 
-  const deleteProject = async (id: string, title: string) => {
-    if(confirm(`Hancurkan blueprint "${title}" beserta blok waktunya?`)) {
-      await supabase.from('projects_forge').delete().eq('id', id);
-      await supabase.from('life_tasks').delete().ilike('title', `%Forge: ${title}%`);
-      fetchForge();
-    }
+  const deleteProject = async () => {
+    if (!projectToDelete) return;
+    
+    // Tarik KTP sebelum menghapus
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Hapus dengan penguncian Ganda (ID + User ID)
+    await supabase.from('projects_forge')
+      .delete()
+      .eq('id', projectToDelete.id)
+      .eq('user_id', user.id); // <--- KUNCI DELETE FORGE
+
+    await supabase.from('life_tasks')
+      .delete()
+      .ilike('title', `%Forge: ${projectToDelete.title}%`)
+      .eq('user_id', user.id); // <--- KUNCI DELETE TASK
+      
+    setProjectToDelete(null);
+    fetchForge();
   };
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-20">
+      {/* ── FORGE DESTRUCTION MODAL ── */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1A1A1A] border-2 border-red-500/20 rounded-3xl p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center mb-6">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 uppercase italic tracking-wider">Destroy Blueprint?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">Hancurkan blueprint <span className="text-red-500 font-bold">"{projectToDelete.title}"</span>? Blok waktu di Daily Hub juga akan dihapus secara permanen.</p>
+              <div className="flex gap-4 w-full">
+                <button onClick={() => setProjectToDelete(null)} className="flex-1 px-4 py-3 rounded-xl bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300 font-bold text-xs transition-colors">Abort</button>
+                <button onClick={deleteProject} className="flex-1 px-4 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs transition-colors shadow-xl shadow-red-500/30 uppercase tracking-widest">Execute</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#121212] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm transition-colors duration-300">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3 italic">
@@ -264,7 +328,7 @@ export default function TheForgePage() {
                   <div className="p-3 bg-orange-500/10 text-orange-500 rounded-2xl"><Code2 size={24}/></div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => handleEditClick(proj)} className="text-gray-400 hover:text-blue-500 transition-colors"><Pencil size={18}/></button>
-                    <button onClick={() => deleteProject(proj.id, proj.title)} className="text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                    <button onClick={() => setProjectToDelete(proj)} className="text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
                   </div>
                 </div>
 

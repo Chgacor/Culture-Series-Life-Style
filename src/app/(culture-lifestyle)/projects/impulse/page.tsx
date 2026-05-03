@@ -26,7 +26,17 @@ export default function AntiImpulseEnginePage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data } = await supabase.from('impulse_carts').select('*').order('created_at', { ascending: false });
+    // 1. Ambil KTP user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 2. Kunci tarikan data hanya untuk barang user ini
+    const { data } = await supabase
+      .from('impulse_carts')
+      .select('*')
+      .eq('user_id', user.id) // <--- KUNCI KEAMANAN
+      .order('created_at', { ascending: false });
+      
     if (data) setItems(data);
     setLoading(false);
   };
@@ -41,7 +51,12 @@ export default function AntiImpulseEnginePage() {
   const handleFreezeItem = async () => {
     if (!itemName || !itemPrice) return alert("Masukkan nama barang dan harganya!");
     
+    // 3. Tarik KTP sebelum menyimpan
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
     await supabase.from('impulse_carts').insert([{
+      user_id: user.id, // <--- SUNTIKAN KTP KEPEMILIKAN
       item_name: itemName,
       price: Number(itemPrice),
       priority: priority,
@@ -53,16 +68,30 @@ export default function AntiImpulseEnginePage() {
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
-    await supabase.from('impulse_carts').update({ status: newStatus }).eq('id', id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 4. Kunci ganda saat update status (Reject/Approve)
+    await supabase.from('impulse_carts')
+      .update({ status: newStatus })
+      .eq('id', id)
+      .eq('user_id', user.id); // <--- KUNCI UPDATE
+      
     fetchData();
   };
 
   // ENGINE: LEMPAR KE SANDBOX
   const handleMakeGoal = async (item: any) => {
-    // 1. Ubah status jadi goal agar tercatat di riwayat
-    await supabase.from('impulse_carts').update({ status: 'goal' }).eq('id', item.id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 5. Ubah status jadi goal (dengan kunci ganda)
+    await supabase.from('impulse_carts')
+      .update({ status: 'goal' })
+      .eq('id', item.id)
+      .eq('user_id', user.id); // <--- KUNCI UPDATE
     
-    // 2. Redirect ke Sandbox bawa parameter data
+    // Redirect ke Sandbox bawa parameter data
     router.push(`/projects/wish?title=${encodeURIComponent(item.item_name)}&price=${item.price}`);
   };
 

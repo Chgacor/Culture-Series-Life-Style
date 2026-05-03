@@ -61,7 +61,7 @@ function DreamSandboxContent() {
   const subtotal = items.reduce((acc, item) => acc + (item.price * item.qty), 0);
   const inflationBuffer = subtotal * 0.10; 
   const grandTotal = subtotal + inflationBuffer;
-  const income = Number(monthlyIncome) || 0;
+  const income = Number(monthlyIncome);
   const capacity = income * (savingPercent / 100);
   const targetFund = isCredit ? grandTotal * (dpPercent / 100) : grandTotal;
   const etaMonths = capacity > 0 ? Math.ceil(targetFund / capacity) : 0;
@@ -73,11 +73,28 @@ function DreamSandboxContent() {
 
   const fetchAllData = async () => {
     setLoading(true);
-    // Hanya ambil yang belum selesai (status != completed) atau fallback
-    const { data: wishData } = await supabase.from('wishes').select('*').order('created_at', { ascending: false });
-    if (wishData) setWishes(wishData.filter(w => w.status !== 'completed'));
+    // 1. Dapatkan Identitas User (KTP)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    const { data: walletData } = await supabase.from('wallets').select('*').order('type', { ascending: true });
+    // 2. Tarik Wishes dengan Gembok
+    const { data: wishData } = await supabase
+      .from('wishes')
+      .select('*')
+      .eq('user_id', user.id) // <--- KUNCI WISHES
+      .order('created_at', { ascending: false });
+
+    if (wishData) {
+      setWishes(wishData.filter(w => w.status !== 'completed'));
+    }
+
+    // 3. Tarik Dompet dengan Gembok
+    const { data: walletData } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('user_id', user.id) // <--- KUNCI WALLETS (Sangat Penting!)
+      .order('type', { ascending: true });
+      
     if (walletData) setWallets(walletData);
     setLoading(false);
   };
@@ -93,29 +110,16 @@ function DreamSandboxContent() {
 
   const handleSaveWish = async () => {
     if (!title || items.length === 0 || capacity <= 0 || !targetBank) {
-          type ModalState =
-      | {
-          isOpen: boolean;
-          type: 'alert';
-          title: string;
-          message: string;
-          confirmText: string;
-          onConfirm: () => void;
-          onCancel: () => void;
-        }
-      | {
-          isOpen: boolean;
-          type: 'confirm';
-          title: string;
-          message: string;
-          confirmText: string;
-          cancelText: string;
-          onConfirm: () => void;
-          onCancel: () => void;
-        };
+      alert("Harap lengkapi judul, minimal 1 barang, kapasitas nabung, dan bank tujuan!");
       return;
     }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // INSERT DENGAN SUNTIKAN KTP
     await supabase.from('wishes').insert([{
+      user_id: user.id, // <--- SUNTIKAN KEPEMILIKAN
       title, target_bank: targetBank, items, savings_capacity: capacity, saved_amount: 0,
       image_url: imageUrl, motivation_note: motivationNote, monthly_income: income, 
       saving_percentage: savingPercent, is_credit: isCredit, dp_percentage: dpPercent, target_fund: targetFund, status: 'active'
@@ -137,10 +141,14 @@ function DreamSandboxContent() {
     const sourceWallet = wallets.find(w => w.id === setorModal.sourceWalletId);
     if (sourceWallet.balance < transferAmount) return alert(`Saldo ${sourceWallet.name} tidak mencukupi untuk transfer ini.`);
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const newSaved = Math.min(setorModal.currentSaved + transferAmount, setorModal.targetFund);
 
-    await supabase.from('wallets').update({ balance: sourceWallet.balance - transferAmount }).eq('id', setorModal.sourceWalletId);
-    await supabase.from('wishes').update({ saved_amount: newSaved }).eq('id', setorModal.wishId);
+    // UPDATE DENGAN KUNCI GANDA
+    await supabase.from('wallets').update({ balance: sourceWallet.balance - transferAmount }).eq('id', setorModal.sourceWalletId).eq('user_id', user.id);
+    await supabase.from('wishes').update({ saved_amount: newSaved }).eq('id', setorModal.wishId).eq('user_id', user.id);
 
     setSetorModal(p => ({...p, isOpen: false, sourceWalletId: '', amount: ''}));
     fetchAllData();
@@ -151,14 +159,17 @@ function DreamSandboxContent() {
   // ==========================================
   const handleExecuteSuren = async () => {
     if (!surenModal.targetWalletId) return alert("Pilih dompet tujuan untuk pengembalian dana.");
-    
     const targetWallet = wallets.find(w => w.id === surenModal.targetWalletId);
 
-    // 1. Kembalikan Uang ke Dompet
-    await supabase.from('wallets').update({ balance: Number(targetWallet.balance) + surenModal.savedAmount }).eq('id', targetWallet.id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    // 2. Catat di Ledger sebagai "Refund Sinking Fund"
+    // 1. Kembalikan Uang ke Dompet
+    await supabase.from('wallets').update({ balance: Number(targetWallet.balance) + surenModal.savedAmount }).eq('id', targetWallet.id).eq('user_id', user.id);
+
+    // 2. Catat di Ledger sebagai "Refund Sinking Fund" (SUNTIK KTP)
     await supabase.from('transactions').insert([{
+      user_id: user.id, // <--- SUNTIKAN KTP KE TRANSAKSI REFUND
       description: `Refund Proyek Batal: ${surenModal.wishTitle}`,
       amount: surenModal.savedAmount,
       category: 'Investasi',
@@ -166,7 +177,7 @@ function DreamSandboxContent() {
     }]);
 
     // 3. Hapus Proyek dari Database
-    await supabase.from('wishes').delete().eq('id', surenModal.wishId);
+    await supabase.from('wishes').delete().eq('id', surenModal.wishId).eq('user_id', user.id);
 
     setSurenModal(p => ({...p, isOpen: false, targetWalletId: ''}));
     fetchAllData();
@@ -184,7 +195,10 @@ function DreamSandboxContent() {
         confirmText: 'Hapus', cancelText: 'Batal',
         onCancel: () => setModal(p => ({...p, isOpen: false})),
         onConfirm: async () => {
-          await supabase.from('wishes').delete().eq('id', id);
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          
+          await supabase.from('wishes').delete().eq('id', id).eq('user_id', user.id); // <--- KUNCI DELETE
           fetchAllData();
           setModal(p => ({...p, isOpen: false}));
         }
@@ -196,8 +210,11 @@ function DreamSandboxContent() {
   // ACTION: SUCCESS (MISI SELESAI)
   // ==========================================
   const handleSuccessProject = async (id: string) => {
-    // Ubah status jadi completed agar masuk ke History Oracle dan hilang dari Sandbox
-    await supabase.from('wishes').update({ status: 'completed' }).eq('id', id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Ubah status jadi completed
+    await supabase.from('wishes').update({ status: 'completed' }).eq('id', id).eq('user_id', user.id); // <--- KUNCI UPDATE
     fetchAllData();
   };
 
@@ -454,32 +471,34 @@ function DreamSandboxContent() {
       {/* MODAL 1: SETOR DANA */}
       {setorModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#181818] p-6 md:p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-gray-200 dark:border-gray-800">
+          <div className="bg-white dark:bg-[#1A1A1A] p-8 rounded-[32px] shadow-2xl max-w-sm w-full border border-gray-200 dark:border-white/10 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-3">
-                <Wallet size={28} className="text-purple-600 dark:text-purple-500" />
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Setor Dana</h3>
+                <div className="p-2 bg-purple-500/10 rounded-xl text-purple-500">
+                  <Wallet size={24} />
+                </div>
+                <h3 className="text-xl font-black text-gray-900 dark:text-white italic uppercase tracking-tight">Deposit Funds</h3>
               </div>
               <button onClick={() => setSetorModal(p => ({...p, isOpen: false}))} className="text-gray-400 hover:text-gray-900 dark:hover:text-white"><X size={20}/></button>
             </div>
             <div className="space-y-4 mb-8">
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Sumber Dana (Potong Dari)</label>
-                <select className="w-full p-3.5 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-gray-800 rounded-xl text-gray-900 dark:text-white text-sm outline-none focus:border-purple-500 cursor-pointer" value={setorModal.sourceWalletId} onChange={e => setSetorModal({...setorModal, sourceWalletId: e.target.value})}>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Target Node (Debit)</label>
+                <select className="w-full p-4 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-white/5 rounded-2xl text-gray-900 dark:text-white text-sm outline-none focus:border-purple-500 cursor-pointer transition-all" value={setorModal.sourceWalletId} onChange={e => setSetorModal({...setorModal, sourceWalletId: e.target.value})}>
                   <option value="" disabled>Pilih Dompet</option>
                   {wallets.map(w => <option key={w.id} value={w.id}>{w.name} - {formatRp(w.balance)}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Nominal Setoran</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Quantum Amount</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-3.5 text-gray-500 font-bold text-sm">Rp</span>
-                  <input autoFocus type="number" placeholder="0" className="w-full p-3.5 pl-12 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-gray-800 rounded-xl text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono" value={setorModal.amount} onChange={e => setSetorModal({...setorModal, amount: e.target.value})} />
+                  <span className="absolute left-4 top-4 text-gray-500 font-bold text-sm">Rp</span>
+                  <input autoFocus type="number" placeholder="0" className="w-full p-4 pl-12 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-white/5 rounded-2xl text-gray-900 dark:text-white outline-none focus:border-purple-500 font-mono text-lg" value={setorModal.amount} onChange={e => setSetorModal({...setorModal, amount: e.target.value})} />
                 </div>
               </div>
             </div>
-            <button onClick={handleExecuteSetor} disabled={!setorModal.sourceWalletId || !setorModal.amount} className="w-full py-3.5 font-bold rounded-xl bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
-              <ArrowRightLeft size={18}/> Kunci Dana
+            <button onClick={handleExecuteSetor} disabled={!setorModal.sourceWalletId || !setorModal.amount} className="w-full py-4 font-black rounded-2xl bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-xl shadow-purple-500/20 uppercase tracking-widest text-xs transition-all">
+              <ArrowRightLeft size={18}/> Execute Sync
             </button>
           </div>
         </div>
@@ -518,17 +537,22 @@ function DreamSandboxContent() {
       {/* MODAL 3: GLOBAL CONFIRM (Untuk Hapus Proyek yang 0 Rupiah) */}
       {modal.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#181818] p-6 md:p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-3 mb-5">
-              {modal.type === 'alert' ? <ShieldAlert size={28} className="text-yellow-500" /> : <AlertTriangle size={28} className="text-red-500" />}
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">{modal.title}</h3>
+          <div className="bg-white dark:bg-[#1A1A1A] p-8 rounded-[32px] shadow-2xl max-w-sm w-full border-2 border-gray-200 dark:border-white/5 animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 ${modal.type === 'alert' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-red-500/10 text-red-500'}`}>
+                {modal.type === 'alert' ? <ShieldAlert size={32} /> : <AlertTriangle size={32} />}
+              </div>
+              <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 uppercase italic tracking-wider">{modal.title}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 leading-relaxed whitespace-pre-wrap">{modal.message}</p>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-8 leading-relaxed whitespace-pre-wrap">{modal.message}</p>
-            <div className="flex justify-end gap-3">
+            
+            <div className="flex gap-3">
               {modal.type !== 'alert' && (
-                <button onClick={modal.onCancel} className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-[#252525] rounded-xl">Batal</button>
+                <button onClick={modal.onCancel} className="flex-1 px-5 py-3 text-xs font-bold text-gray-500 bg-gray-100 dark:bg-white/5 dark:text-gray-400 rounded-xl transition-colors">Batal</button>
               )}
-              <button onClick={modal.onConfirm} className={`px-5 py-2.5 text-sm font-bold rounded-xl text-white ${modal.type === 'confirm' ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-900 dark:bg-white dark:text-black'}`}>{modal.confirmText}</button>
+              <button onClick={modal.onConfirm} className={`flex-[2] px-5 py-3 text-xs font-black rounded-xl text-white uppercase tracking-widest transition-all shadow-lg ${modal.type === 'confirm' ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20' : 'bg-gray-900 dark:bg-white dark:text-black'}`}>
+                {modal.confirmText}
+              </button>
             </div>
           </div>
         </div>
