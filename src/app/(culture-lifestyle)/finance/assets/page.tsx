@@ -60,14 +60,30 @@ export default function AssetsAndWalletsPage() {
   const fetchAllData = async () => {
     setLoading(true);
     
-    const { data: walletData } = await supabase.from('wallets').select('*').order('type', { ascending: true });
-    if (walletData) setWallets(walletData);
+      // Pastikan Anda sudah mendeklarasikan 'user' di baris atas fungsi ini:
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
 
-    const { data: projectData } = await supabase.from('wishes').select('*').order('created_at', { ascending: false });
-    if (projectData) setProjects(projectData.filter(p => p.saved_amount < p.target_fund));
+  const { data: walletData } = await supabase
+    .from('wallets')
+    .select('*')
+    .eq('user_id', user.id) // <--- Kunci akses dompet
+    .order('type', { ascending: true });
+  if (walletData) setWallets(walletData);
 
-    const { data: goldData } = await supabase.from('gold_assets').select('*').order('created_at', { ascending: false });
-    if (goldData) setGoldAssets(goldData);
+  const { data: projectData } = await supabase
+    .from('wishes')
+    .select('*')
+    .eq('user_id', user.id) // <--- Kunci akses proyek/wishlist
+    .order('created_at', { ascending: false });
+  if (projectData) setProjects(projectData.filter(p => p.saved_amount < p.target_fund));
+
+  const { data: goldData } = await supabase
+    .from('gold_assets')
+    .select('*')
+    .eq('user_id', user.id) // <--- Kunci akses aset emas
+    .order('created_at', { ascending: false });
+  if (goldData) setGoldAssets(goldData);
 
     try {
       const priceRes = await fetch('/api/gold-price');

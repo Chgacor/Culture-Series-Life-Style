@@ -21,8 +21,18 @@ export default function RecurringGoalsPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    // Tarik data batas anggaran dari database
-    const { data: limitsData } = await supabase.from('budget_limits').select('*').order('name');
+    
+    // 1. Ambil identitas user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 2. Tarik data batas anggaran KHUSUS MILIK USER INI
+    const { data: limitsData } = await supabase
+      .from('budget_limits')
+      .select('*')
+      .eq('user_id', user.id) // <--- KUNCI KEAMANAN
+      .order('name');
+      
     if (limitsData) setBudgetLimits(limitsData);
     setLoading(false);
   };
@@ -33,7 +43,11 @@ export default function RecurringGoalsPage() {
   const handleAddBudget = async () => {
     if (!newBudget.name || !newBudget.limit_amount) return;
     
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
     await supabase.from('budget_limits').insert([{
+      user_id: user.id, // <--- KTP PEMILIK
       name: newBudget.name,
       limit_amount: Number(newBudget.limit_amount),
       description: newBudget.description
@@ -48,9 +62,13 @@ export default function RecurringGoalsPage() {
   const handleUpdateLimit = async (id: string) => {
     if (!editLimit) return;
     
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
     await supabase.from('budget_limits')
       .update({ limit_amount: Number(editLimit) })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', user.id); // <--- KUNCI KEAMANAN UPDATE
     
     setEditingId(null);
     setEditLimit('');
@@ -58,11 +76,17 @@ export default function RecurringGoalsPage() {
   };
 
   // --- FUNGSI HAPUS ANGGARAN ---
-  const handleDelete = async (id: string, name: string) => {
-    if(confirm(`Yakin ingin menghapus kategori anggaran "${name}"? Seluruh pencatatan transaksi sebelumnya tidak akan terhapus, namun tidak akan dipantau lagi.`)) {
-      await supabase.from('budget_limits').delete().eq('id', id);
-      fetchData();
-    }
+  const handleDelete = async (id: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('budget_limits')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id); // <--- KUNCI KEAMANAN DELETE
+      
+    setModal({ ...modal, isOpen: false }); // Tutup modal setelah hapus
+    fetchData();
   };
 
   const formatRupiah = (angka: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka);
@@ -73,12 +97,16 @@ export default function RecurringGoalsPage() {
   // Ikon-ikon untuk kartu Kamus Kategori
   const CATEGORY_ICONS: Record<string, string> = {
     'Konsumsi': '🍔',
+    'Makanan': '🍱',
     'Lifestyle': '👕',
     'Operasional': '⛽',
+    'Kesehatan': '🏥',
+    'Pendidikan': '📚',
+    'Investasi': '📈',
     'default': '📊'
   };
 
-  if (loading) return <div className="p-8 animate-pulse text-gray-500">Memuat Sistem Anggaran...</div>;
+  if (loading) return <div className="p-8 animate-pulse text-gray-500 font-mono text-sm">MEMUAT SISTEM ANGGARAN...</div>;
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12 relative">
@@ -101,7 +129,7 @@ export default function RecurringGoalsPage() {
             </div>
             <button 
               onClick={() => setIsAdding(!isAdding)}
-              className="px-5 py-2.5 bg-white text-indigo-700 hover:bg-gray-100 font-semibold rounded-xl transition-colors shadow-sm flex items-center gap-2"
+              className="px-5 py-2.5 bg-white text-indigo-700 hover:bg-gray-100 font-semibold rounded-xl transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap"
             >
               {isAdding ? 'Batal' : <><Plus size={18} /> Tambah Anggaran</>}
             </button>
@@ -109,7 +137,7 @@ export default function RecurringGoalsPage() {
         </div>
 
         {/* --- KARTU KANAN: KAMUS KATEGORI (ISI AREA KOSONG) --- */}
-        <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hiddentransition-colors">
+        <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden transition-colors">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800">
             <h3 className="font-semibold text-lg text-gray-900 dark:text-white flex items-center gap-2"><BookOpenCheck size={20}/> Kamus Kategori Pengeluaran</h3>
           </div>
@@ -120,7 +148,7 @@ export default function RecurringGoalsPage() {
               budgetLimits.map(sub => (
                 <div key={sub.id} className="p-4 flex flex-col md:flex-row items-center gap-3 hover:bg-gray-50 dark:hover:bg-[#2A2A2A]/50 transition-colors">
                   <div className="flex items-center gap-3 w-full">
-                    <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg font-medium text-gray-600 dark:text-gray-400">
+                    <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg font-medium text-gray-600 dark:text-gray-400 shrink-0">
                       {CATEGORY_ICONS[sub.name] || CATEGORY_ICONS['default']}
                     </div>
                     <div>
@@ -137,7 +165,7 @@ export default function RecurringGoalsPage() {
 
       {/* --- FORM TAMBAH ANGGARAN --- */}
       {isAdding && (
-        <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 p-6 rounded-2xl shadow-sm transition-colors">
+        <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 p-6 rounded-2xl shadow-sm transition-colors animate-in zoom-in-95 duration-200">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2"><Target size={18}/> Daftarkan Kategori Anggaran Baru</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div className="col-span-1">
@@ -176,12 +204,12 @@ export default function RecurringGoalsPage() {
               return (
                 <div key={sub.id} className="p-6 flex flex-col md:flex-row items-center justify-between gap-4 hover:bg-gray-50 dark:hover:bg-[#2A2A2A]/50 transition-colors">
                   <div className="flex items-center gap-4 w-full md:w-auto">
-                    <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg font-medium text-gray-600 dark:text-gray-400">
+                    <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg font-medium text-gray-600 dark:text-gray-400 shrink-0">
                       {CATEGORY_ICONS[sub.name] || CATEGORY_ICONS['default']}
                     </div>
                     <div>
                       <h4 className="font-bold text-gray-900 dark:text-white text-lg">{sub.name}</h4>
-                      <p className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded flex items-center gap-1 mt-1">
+                      <p className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded flex items-center gap-1 mt-1 font-mono">
                         🎯 Batas: {formatRupiah(sub.limit_amount)}
                       </p>
                     </div>
@@ -191,12 +219,12 @@ export default function RecurringGoalsPage() {
                     <div className="text-right flex items-center gap-3">
                       {isEditing ? (
                         <div className="flex items-center gap-2">
-                          <input type="number" autoFocus className="p-2 text-xs bg-white dark:bg-[#1E1E1E] border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white w-24 outline-none focus:ring-1 focus:ring-blue-500" value={editLimit} onChange={e => setEditLimit(e.target.value)} />
-                          <button onClick={() => handleUpdateLimit(sub.id)} className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"><Check size={14}/></button>
-                          <button onClick={() => setEditingId(null)} className="p-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"><X size={14}/></button>
+                          <input type="number" autoFocus className="p-2 text-xs font-mono bg-white dark:bg-[#1E1E1E] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white w-28 outline-none focus:ring-1 focus:ring-blue-500" value={editLimit} onChange={e => setEditLimit(e.target.value)} />
+                          <button onClick={() => handleUpdateLimit(sub.id)} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"><Check size={14}/></button>
+                          <button onClick={() => setEditingId(null)} className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"><X size={14}/></button>
                         </div>
                       ) : (
-                        <p className="font-bold text-2xl text-gray-900 dark:text-white">{formatRupiah(sub.limit_amount)}</p>
+                        <p className="font-bold font-mono text-2xl text-gray-900 dark:text-white">{formatRupiah(sub.limit_amount)}</p>
                       )}
                       
                       {!isEditing && (
@@ -213,9 +241,10 @@ export default function RecurringGoalsPage() {
                     {!isEditing && (
                       <button 
                         onClick={() => setModal({
-                          isOpen: true, title: 'Hapus Kategori', 
-                          message: `Yakin ingin menghapus kategori anggaran "${sub.name}"?`,
-                          data: { id: sub.id, name: sub.name }
+                          isOpen: true, 
+                          title: 'Hapus Kategori', 
+                          message: `Yakin ingin menghapus kategori anggaran "${sub.name}"? Pencatatan lama tidak akan terhapus dari Ledger.`,
+                          data: { id: sub.id }
                         })}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                         title="Hapus Kategori Anggaran"
@@ -233,23 +262,23 @@ export default function RecurringGoalsPage() {
 
       {/* --- CUSTOM CONFIRMATION MODAL --- */}
       {modal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl shadow-xl max-w-sm w-full border border-gray-200 dark:border-gray-800 text-center relative overflow-hidden transition-all duration-300">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl shadow-xl max-w-sm w-full border border-gray-200 dark:border-gray-800 text-center relative overflow-hidden transition-all duration-300 animate-in zoom-in-95">
             <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-500 mx-auto mb-4">
               <AlertCircle size={24} />
             </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{modal.title}</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">{modal.message}</p>
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-center gap-3">
               <button 
                 onClick={() => setModal({ ...modal, isOpen: false })}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2A2A2A] rounded-lg transition-colors"
+                className="px-5 py-2.5 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2A2A2A] rounded-xl transition-colors"
               >
                 Batal
               </button>
               <button 
-                onClick={() => handleDelete(modal.data.id, modal.data.name)}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                onClick={() => handleDelete(modal.data.id)}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-lg shadow-red-500/20"
               >
                 Ya, Hapus
               </button>

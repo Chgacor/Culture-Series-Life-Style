@@ -16,10 +16,21 @@ export default function RecurringPage() {
   const fetchData = async () => {
     setLoading(true);
     // Tarik data dompet untuk pilihan Dropdown
-    const { data: walletsData } = await supabase.from('wallets').select('*');
+        const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 2. Filter dompet dengan gembok keamanan user.id
+    const { data: walletsData } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('user_id', user.id); // <--- KUNCI ANTI-BOCOR
+
     if (walletsData) {
       setWallets(walletsData);
-      if (walletsData.length > 0) setNewSub(prev => ({ ...prev, wallet_id: walletsData[0].id }));
+      // Set default dompet ke dompet pertama milik user tersebut (bukan dompet orang lain)
+      if (walletsData.length > 0) {
+        setNewSub(prev => ({ ...prev, wallet_id: walletsData[0].id }));
+      }
     }
 
     // Tarik data langganan + nama dompetnya

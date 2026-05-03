@@ -1,11 +1,41 @@
-export const dynamic = 'force-dynamic';
+"use client";
 
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 import TransactionInput from '@/components/TransactionInput';
-import { BookOpen, ArrowRightLeft, TrendingUp, TrendingDown, Receipt, Wallet, Sparkles, Database } from 'lucide-react';
+import { BookOpen, ArrowRightLeft, TrendingUp, TrendingDown, Wallet, Sparkles, Database } from 'lucide-react';
 
-export default async function LedgerPage() {
-  const { data: transactions } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
+export default function LedgerPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchLedger = async () => {
+      setLoading(true);
+      
+      // 1. Ambil Identitas (Berjalan mulus karena ini Client Component)
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        router.push('/auth'); // Lempar ke halaman login jika sesi habis
+        return;
+      }
+
+      // 2. Tarik Data dengan Filter Kunci Keamanan
+      const { data } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id) // <--- Kunci akses riwayat transaksi
+        .order('created_at', { ascending: false });
+
+      if (data) setTransactions(data);
+      setLoading(false);
+    };
+
+    fetchLedger();
+  }, [router]);
 
   const formatRupiah = (angka: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Math.abs(angka));
   
@@ -56,6 +86,17 @@ export default async function LedgerPage() {
     return <span className={`px-2.5 py-1 text-[10px] uppercase tracking-widest font-bold rounded-md border ${colors[Math.abs(hash) % colors.length]}`}>{cat}</span>;
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#121212]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-500 font-medium font-mono">SYNCHRONIZING LEDGER...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 md:space-y-8 pb-20">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#121212] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm transition-colors duration-300">
@@ -89,7 +130,7 @@ export default async function LedgerPage() {
         <div className="lg:col-span-8 xl:col-span-9 bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-3xl shadow-sm overflow-hidden flex flex-col h-[calc(100vh-160px)] min-h-[600px]">
           <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-[#1A1A1A]">
             <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2"><Database size={18} className="text-blue-500" /> Registry</h3>
-            <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full uppercase tracking-widest">{transactions?.length || 0} Records</span>
+            <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full uppercase tracking-widest">{transactions.length} Records</span>
           </div>
 
           <div className="flex-1 overflow-y-auto no-scrollbar relative">
@@ -103,7 +144,7 @@ export default async function LedgerPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800/50">
-                {transactions && transactions.length > 0 ? (
+                {transactions.length > 0 ? (
                   transactions.map((trx) => {
                     const { color, sign, icon } = getTransactionStyle(trx);
                     const { dayMonthYear, time } = formatTanggal(trx.created_at);
