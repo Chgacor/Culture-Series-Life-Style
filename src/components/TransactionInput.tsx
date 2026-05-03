@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Send, Loader2, Bot } from 'lucide-react';
+import { supabase } from '@/lib/supabase'; // <--- Wajib import Supabase
 
 export default function TransactionInput() {
   const [input, setInput] = useState('');
@@ -14,12 +15,21 @@ export default function TransactionInput() {
     setLoading(true);
 
     try {
+      // 1. Ambil identitas user yang sedang mengetik
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        alert("Autentikasi gagal. Silakan login ulang.");
+        setLoading(false);
+        return;
+      }
+
       await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: `Catat transaksi ini: ${input}`,
-          // Metrik dikirim kosong saja karena ini API ringan dari Ledger
+          userId: user.id, // <--- SUNTIKKAN USER ID KE DALAM PAYLOAD UNTUK AI
           metrics: { totalLiquidity: 0, totalLocked: 0 } 
         })
       });
@@ -40,7 +50,7 @@ export default function TransactionInput() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Cth: Gaji masuk BCA 5jt..."
-          rows={3} // Dibuat lebih pendek agar proporsional
+          rows={3}
           disabled={loading}
           className="w-full resize-none bg-gray-50 dark:bg-[#121212] text-gray-900 dark:text-white text-sm p-3.5 pr-10 rounded-2xl border border-gray-200 dark:border-gray-800 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-[#1A1A1A] transition-all shadow-inner disabled:opacity-50 no-scrollbar"
         />

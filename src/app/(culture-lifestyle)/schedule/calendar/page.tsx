@@ -31,11 +31,24 @@ export default function MonthlyCalendarPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // Tarik semua tugas
-    const { data: tasksData } = await supabase.from('life_tasks').select('*');
+    // 0. WAJIB: Ambil KTP User
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    // 1. Tarik semua tugas (HANYA MILIK USER INI)
+    const { data: tasksData } = await supabase
+      .from('life_tasks')
+      .select('*')
+      .eq('user_id', user.id); // <--- KUNCI JADWAL
     
-    // Tarik semua history penyelesaian untuk merender warna Hijau di kalender
-    const { data: completionsData } = await supabase.from('task_completions').select('*');
+    // 2. Tarik semua history penyelesaian (HANYA MILIK USER INI)
+    const { data: completionsData } = await supabase
+      .from('task_completions')
+      .select('*')
+      .eq('user_id', user.id); // <--- KUNCI HISTORI SELESAI
 
     if (tasksData) setTasks(tasksData);
     if (completionsData) setCompletions(completionsData);
@@ -86,9 +99,15 @@ export default function MonthlyCalendarPage() {
 
   const handleAddSchedule = async () => {
     if (!newTask.title || !newTask.startDate) return;
+    
+    // 3. AMBIL KTP UNTUK DISUNTIKKAN KE JADWAL BARU
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const isMulti = newTask.isRoutine && newTask.endDate !== '';
 
     const payload = {
+      user_id: user.id, // <--- SUNTIKAN KEPEMILIKAN JADWAL
       title: newTask.title,
       task_type: newTask.startTime ? 'timed' : 'flexible',
       target_date: newTask.startDate,

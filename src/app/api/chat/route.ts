@@ -17,20 +17,34 @@ export async function POST(req: Request) {
       );
     }
 
-    // FIX: Menggabungkan semua variabel dalam SATU kali pemanggilan req.json()
     const { 
       message, 
+      userId, 
       metrics = { totalLiquidity: 0, totalLocked: 0 }, 
       todayTransactions = [], 
       weeklyTransactions = [], 
       activeProjects = [], 
       todaySchedule = [],
-      forgeProjects = [] // Menambahkan forgeProjects di sini
+      forgeProjects = [] 
     } = await req.json();
 
-    // 1. Tarik nama-nama dompet secara live agar AI tahu
-    const { data: wallets } = await supabase.from('wallets').select('*');
-    const walletNames = wallets ? wallets.map(w => w.name).join(', ') : 'BCA, Dompet Fisik';
+    if (!userId) {
+      return NextResponse.json({ error: 'Akses Ditolak. Identitas (User ID) tidak ditemukan.' }, { status: 401 });
+    }
+
+    // 1. Tarik Profil User untuk mengetahui nama aslinya
+    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
+    const userName = profile?.full_name || 'Architect';
+
+    // 2. Tarik nama-nama dompet milik user ini
+    const { data: wallets } = await supabase.from('wallets').select('*').eq('user_id', userId);
+    const walletNames = wallets && wallets.length > 0 ? wallets.map(w => w.name).join(', ') : 'BCA, Dompet Fisik';
+
+    // 3. Tarik DAFTAR KATEGORI DINAMIS dari budget_limits milik user ini
+    const { data: budgetLimits } = await supabase.from('budget_limits').select('name').eq('user_id', userId);
+    const categoryNames = budgetLimits && budgetLimits.length > 0 
+      ? budgetLimits.map(b => b.name).join(', ') 
+      : 'Konsumsi, Operasional, Lifestyle, Lain-lain'; // Fallback jika belum ada data
 
     // Merangkum data untuk dibaca AI
     const todayLog = Array.isArray(todayTransactions) && todayTransactions.length > 0
@@ -51,52 +65,24 @@ export async function POST(req: Request) {
         }).join('\n')
       : "Tidak ada jadwal/habit khusus yang tercatat untuk hari ini.";
     
-    // Rangkuman Forge Projects
     const forgeLog = Array.isArray(forgeProjects) && forgeProjects.length > 0
-      ? forgeProjects.map((p: any) => `- ${p.title} (Deadline: ${p.deadline}, Intensity: ${p.target_hours} hours total)`).join('\n')
+      ? forgeProjects.map((p: any) => `- ${p.title} (Deadline: ${p.deadline})`).join('\n')
       : "Belum ada proyek intelektual aktif.";
 
     const systemPrompt = `
-      Kamu adalah "CultureOS Co-Pilot", otak AI canggih dan arsitek gaya hidup untuk pengguna yang kamu panggil "Boss" atau "Architect". Kamu bukan sekadar chatbot; kamu adalah konsultan proaktif yang fokus pada tiga pilar inti: Disiplin Finansial, Optimasi Produktivitas, dan Pembelajaran Hiper-Adaptif.
-
-      ### 1. PERSONALITAS & TONE
-      - Bicara dengan kecerdasan tingkat tinggi: Profesional, tajam, sedikit jenaka, namun tetap grounded.
-      - Jaga persona "Stoic Mentor": Dorong pertumbuhan jangka panjang daripada gratifikasi jangka pendek.
-      - Jujur langsung: Jika Boss boros, sebutkan dengan logika, tapi selalu berikan jalan untuk penebusan.
-
-      ### 2. FINANCIAL WATCHDOG (Anti-Boros)
-      - Kamu punya akses real-time ke Ledger dan Wallets.
-      - Tujuan utama: Ubah "belanja impulsif" menjadi "investasi strategis".
-      - Analisis pola pengeluaran. Jika deteksi pengeluaran rendah-nilai berulang, sarankan "Freeze" di mesin Anti-Impulse.
-      - Puji kontribusi Sinking Fund yang sukses dan akuisisi aset emas.
-
-      ### 3. THE LEARNING ENGINE (Referensi Kontekstual)
-      - Kamu bertindak sebagai Pustakawan Pribadi.
-      - Setiap kali Boss sebut tugas atau proyek (misal "Rakit PC Server" atau "Belajar Laravel"), tawarkan referensi belajar berkualitas tinggi (dokumentasi, artikel, atau kerangka konseptual) alih-alih nasihat generik.
-      - Hubungkan belajar dengan aksi: Jika jadwal tunjukkan tugas "Design Feed", sarankan konsep teori warna atau tren tipografi.
-
-      ### 4. SCHEDULE & ROUTINE COMMAND
-      - Kamu adalah penjaga "Daily Hub".
-      - Bantu Boss navigasi hari. Jika dia tanya jadwal, jangan cuma list tugas—analisis. Identifikasi bottleneck atau sarankan waktu terbaik eksekusi tugas deep-work berdasarkan pola produktivitasnya.
-
-      ### 5. ADAPTIVE EVOLUTION (The Feedback Loop)
-      - Kamu dirancang untuk "Belajar bagaimana Boss belajar."
-      - Amati preferensinya: Apakah dia suka detail teknis atau overview filosofis? Apakah dia kesulitan rutinitas pagi atau budgeting akhir pekan?
-      - Sesuaikan gaya intervensimu. Jadi lebih ketat jika disiplin melemah, lebih kolaboratif saat dia dalam "Flow State."
+      Kamu adalah "CultureOS Co-Pilot", otak AI canggih dan arsitek gaya hidup. 
+      Pengguna yang sedang berinteraksi denganmu bernama asli ${userName}. Kamu bisa menyapanya dengan namanya, atau dengan gelar "Boss" / "Architect".
+      Kamu adalah konsultan proaktif yang fokus pada Disiplin Finansial, Optimasi Produktivitas, dan Pembelajaran Hiper-Adaptif.
 
       ### INSTRUKSI OPERASIONAL:
-      - Selalu prioritaskan data dari "KONTEKS REAL-TIME" yang disediakan (Wallets, Ledger, Projects, Schedule).
-      - Untuk pencatatan finansial, gunakan kode rahasia secara ketat:
-        * [LOG|Deskripsi|NominalAngka|Kategori|NamaDompet] untuk pengeluaran/pemasukkan.
-        * [GOLD|GramAngka|HargaPerGramAngka|NamaDompet] untuk aset emas.
-        * [TRANSFER|NominalAngka|NamaDompetAsal|NamaDompetTujuan] untuk alokasi.
-      - Jangan pernah bilang Boss untuk "Cek menu." Kamu ADALAH interface. Sampaikan informasi langsung.
+      - Selalu prioritaskan data dari "KONTEKS REAL-TIME" yang disediakan.
+      - Jangan pernah menyuruh Boss untuk "Cek menu" atau "Cek aplikasi". Kamu ADALAH interface-nya. Sampaikan informasi langsung.
 
-      Daftar Dompet Pengguna saat ini: ${walletNames}. (Jika tidak disebut, gunakan dompet pertama).
+      Daftar Dompet saat ini: ${walletNames}. (Jika tidak disebut, gunakan dompet pertama yang logis).
+      Daftar Kategori Anggaran Aktif: ${categoryNames}.
       
       KONTEKS REAL-TIME HARI INI:
       - Uang Likuid: Rp ${Number(metrics.totalLiquidity).toLocaleString('id-ID')}
-      - Sinking Funds: Rp ${Number(metrics.totalLocked).toLocaleString('id-ID')}
       - PENGELUARAN HARI INI:\n${todayLog}
       - PENGELUARAN MINGGU INI:\n${weeklyLog}
       - PROYEK IMPIAN SAAT INI:\n${projectsLog}
@@ -104,22 +90,26 @@ export async function POST(req: Request) {
       - THE FORGE (Intellectual Projects):\n${forgeLog}
 
       INSTRUKSI PENTING (BACA DENGAN TELITI):
-      1. JAWAB LANGSUNG: Jika Boss bertanya tentang jadwal, kegiatan, proyek, atau keuangannya, BACAKAN DATANYA LANGSUNG dengan gaya bahasa yang luwes, santai, dan profesional. JANGAN PERNAH menyuruh Boss untuk mengecek menu atau tab lain.
+      1. JAWAB LANGSUNG: Jawab dengan gaya bahasa yang luwes, santai, jenaka, dan profesional.
       
       2. FITUR AUTO-CATAT (TRANSAKSI BIASA): Jika Boss menyuruh mencatat pemasukkan/pengeluaran, selipkan KODE RAHASIA ini:
          [LOG|Deskripsi|NominalAngka|Kategori|NamaDompet]
-         Contoh: "Gaji masuk BCA 5jt" -> [LOG|Gaji Masuk|5000000|Gaji|BCA]
-         Contoh: "Beli bensin 35000 pakai Dompet Fisik" -> [LOG|Beli bensin|35000|Operasional|Dompet Fisik]
+         
+         PENTING UNTUK KATEGORI: Kamu WAJIB HANYA memilih salah satu dari daftar Kategori Anggaran Aktif berikut: [ ${categoryNames} ].
+         *Pengecualian: Jika itu adalah uang masuk (gaji, profit, diberi orang), gunakan kategori "Pemasukkan".*
+         Jika Boss menyebutkan nama kategori yang tidak ada persis di daftar, cocokkan dengan yang paling mendekati dari daftar di atas.
+
+         Contoh 1: "Beli bensin 35rb pakai dompet fisik" -> [LOG|Beli Bensin|35000|Operasional|Dompet Fisik] (asumsi 'Operasional' ada di daftar).
+         Contoh 2: "Gaji masuk 5jt ke BCA" -> [LOG|Gaji Masuk|5000000|Pemasukkan|BCA]
+         Contoh 3: "Bayar rumah sakit 300rb pakai BCA" -> [LOG|Rumah Sakit|300000|Kesehatan|BCA] (asumsi 'Kesehatan' ada di daftar).
          
       3. FITUR AUTO-CATAT (BELI EMAS): Jika Boss bilang membeli emas, kamu WAJIB membalas dengan KODE ini:
          [GOLD|GramAngka|HargaPerGramAngka|NamaDompet]
          Contoh Teksmu: "Aset emas berhasil diamankan, Boss. [GOLD|5|1300000|BCA]"
          
-      4. FITUR TRANSFER ANTAR DOMPET: Jika Boss menyuruh transfer atau memindahkan uang dari satu dompet ke dompet lain, keluarkan KODE ini:
+      4. FITUR TRANSFER ANTAR DOMPET: Jika Boss menyuruh memindahkan uang dari satu dompet ke dompet lain, keluarkan KODE ini:
          [TRANSFER|NominalAngka|NamaDompetAsal|NamaDompetTujuan]
          Contoh: "Transfer 50rb dari Dompet Fisik ke BCA" -> [TRANSFER|50000|Dompet Fisik|BCA]
-
-      5. Jika atasan bertanya tentang "pembelajaran" atau "The Forge", lihat proyek-proyek di atas. Secara proaktif sarankan kerangka kerja teknis atau sumber daya pembelajaran. Misalnya, jika dia sedang membangun ERP, sarankan untuk membaca tentang "Arsitektur Basis Data Multi-tenant".
     `;
 
     const modelCandidates = [process.env.GEMINI_MODEL || 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
@@ -136,16 +126,12 @@ export async function POST(req: Request) {
       } catch (modelError: any) {
         lastModelError = modelError;
         const messageText = String(modelError?.message || '').toLowerCase();
-        if (messageText.includes('not found') || messageText.includes('not supported') || messageText.includes('404')) {
-          continue;
-        }
+        if (messageText.includes('not found') || messageText.includes('not supported') || messageText.includes('404')) continue;
         throw modelError;
       }
     }
 
-    if (!result) {
-      throw lastModelError ?? new Error('Tidak ada model AI yang tersedia.');
-    }
+    if (!result) throw lastModelError ?? new Error('Tidak ada model AI yang tersedia.');
 
     let responseText = result.text ?? '';
 
@@ -158,12 +144,12 @@ export async function POST(req: Request) {
       const [fullCode, grams, pricePerGram, walletName] = goldMatch;
       const totalCost = Number(grams) * Number(pricePerGram);
       
-      await supabase.from('gold_assets').insert([{ grams: Number(grams), buy_price_per_gram: Number(pricePerGram), description: 'Auto-Buy via AI' }]);
-      await supabase.from('transactions').insert([{ description: `Beli Emas (${grams}g via AI)`, amount: totalCost, category: 'Investasi', wallet: walletName.trim() }]);
+      await supabase.from('gold_assets').insert([{ user_id: userId, grams: Number(grams), buy_price_per_gram: Number(pricePerGram), description: 'Auto-Buy via AI' }]);
+      await supabase.from('transactions').insert([{ user_id: userId, description: `Beli Emas (${grams}g via AI)`, amount: totalCost, category: 'Investasi', wallet: walletName.trim() }]);
       
       const wallet = wallets?.find(w => w.name.toLowerCase().includes(walletName.trim().toLowerCase()));
       if (wallet) {
-        await supabase.from('wallets').update({ balance: Number(wallet.balance) - totalCost }).eq('id', wallet.id);
+        await supabase.from('wallets').update({ balance: Number(wallet.balance) - totalCost }).eq('id', wallet.id).eq('user_id', userId);
       }
 
       responseText = responseText.replace(fullCode, '').trim();
@@ -171,7 +157,7 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // MESIN PENDETEKSI KODE TRANSFER (BARU)
+    // MESIN PENDETEKSI KODE TRANSFER
     // ==========================================
     const transferRegex = /\[TRANSFER\|(\d+)\|(.*?)\|(.*?)\]/;
     const transferMatch = responseText.match(transferRegex);
@@ -182,10 +168,11 @@ export async function POST(req: Request) {
       const destW = wallets?.find(w => w.name.toLowerCase().includes(toWallet.trim().toLowerCase()));
 
       if (sourceW && destW) {
-        await supabase.from('wallets').update({ balance: Number(sourceW.balance) - Number(amount) }).eq('id', sourceW.id);
-        await supabase.from('wallets').update({ balance: Number(destW.balance) + Number(amount) }).eq('id', destW.id);
+        await supabase.from('wallets').update({ balance: Number(sourceW.balance) - Number(amount) }).eq('id', sourceW.id).eq('user_id', userId);
+        await supabase.from('wallets').update({ balance: Number(destW.balance) + Number(amount) }).eq('id', destW.id).eq('user_id', userId);
         
         await supabase.from('transactions').insert([{ 
+          user_id: userId,
           description: `Transfer: ${sourceW.name} → ${destW.name}`, 
           amount: Number(amount), 
           category: 'Operasional', 
@@ -211,14 +198,20 @@ export async function POST(req: Request) {
       
       const isIncome = cat === 'gaji' || cat === 'pemasukkan' || cat === 'freelance' || cat === 'investasi' || desc.toLowerCase().includes('masuk');
 
-      await supabase.from('transactions').insert([{ description: desc.trim(), amount: Number(amount), category: category.trim(), wallet: walletName.trim() }]);
+      await supabase.from('transactions').insert([{ 
+        user_id: userId, 
+        description: desc.trim(), 
+        amount: Number(amount), 
+        category: category.trim(), 
+        wallet: walletName.trim() 
+      }]);
       
       const wallet = wallets?.find(w => w.name.toLowerCase().includes(walletName.trim().toLowerCase()));
       if (wallet) {
         const newBalance = isIncome 
           ? Number(wallet.balance) + Number(amount) 
           : Number(wallet.balance) - Number(amount);
-        await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id);
+        await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id).eq('user_id', userId);
       }
 
       responseText = responseText.replace(fullCode, '').trim();

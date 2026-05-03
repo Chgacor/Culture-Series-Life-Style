@@ -49,12 +49,24 @@ export default function DailyHubPage() {
   // ==========================================
   const fetchTasks = async () => {
     setLoading(true);
+    // 0. Ambil KTP User
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     
-    // 1. Tarik semua data
-    const { data: rawTasks } = await supabase.from('life_tasks').select('*').order('start_time', { ascending: true });
+    // 1. Tarik semua data jadwal (KHUSUS MILIK USER INI)
+    const { data: rawTasks } = await supabase
+      .from('life_tasks')
+      .select('*')
+      .eq('user_id', user.id) // <--- KUNCI KEAMANAN
+      .order('start_time', { ascending: true });
     
-    // 2. Tarik data penyelesaian (Ledger) khusus untuk tanggal yang dipilih
-    const { data: compData } = await supabase.from('task_completions').select('task_id').eq('completed_date', selectedDate);
+    // 2. Tarik data penyelesaian khusus untuk tanggal yang dipilih (KHUSUS MILIK USER INI)
+    const { data: compData } = await supabase
+      .from('task_completions')
+      .select('task_id')
+      .eq('completed_date', selectedDate)
+      .eq('user_id', user.id); // <--- KUNCI KEAMANAN
+      
     const completedIds = compData?.map(c => c.task_id) || [];
     setCompletions(completedIds);
 
@@ -116,7 +128,13 @@ export default function DailyHubPage() {
   // ==========================================
   const handleAddTask = async () => {
     if (!newTask.title || isPastDate) return;
+    
+    // AMBIL KTP UNTUK INSERT JADWAL
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const payload = {
+      user_id: user.id, // <--- SUNTIKAN KEPEMILIKAN
       title: newTask.title,
       task_type: newTask.task_type,
       target_date: selectedDate,
@@ -137,11 +155,20 @@ export default function DailyHubPage() {
     if (isPastDate) return;
     if (task.task_type === 'timed' && !isUnlocked && !task.is_completed) return; 
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     if (task.is_recurring) {
-      if (task.is_completed) await supabase.from('task_completions').delete().match({ task_id: task.id, completed_date: selectedDate });
-      else await supabase.from('task_completions').insert([{ task_id: task.id, completed_date: selectedDate }]);
+      if (task.is_completed) {
+        // Hapus dengan Kunci Ganda
+        await supabase.from('task_completions').delete().match({ task_id: task.id, completed_date: selectedDate, user_id: user.id });
+      } else {
+        // Centang dengan KTP
+        await supabase.from('task_completions').insert([{ task_id: task.id, completed_date: selectedDate, user_id: user.id }]);
+      }
     } else {
-      await supabase.from('life_tasks').update({ is_completed: !task.is_completed }).eq('id', task.id);
+      // Update Tugas Sekali Pakai dengan Kunci Ganda
+      await supabase.from('life_tasks').update({ is_completed: !task.is_completed }).eq('id', task.id).eq('user_id', user.id);
     }
     fetchTasks();
   };
@@ -200,11 +227,17 @@ export default function DailyHubPage() {
   const handleTimerComplete = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (task) {
-      await supabase.from('life_tasks').update({ focused_minutes: getTargetMinutes(task.start_time, task.end_time) }).eq('id', taskId);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase.from('life_tasks').update({ focused_minutes: getTargetMinutes(task.start_time, task.end_time) }).eq('id', taskId).eq('user_id', user.id);
       
       // Auto-Checklist saat waktu habis
-      if (task.is_recurring) await supabase.from('task_completions').insert([{ task_id: task.id, completed_date: selectedDate }]);
-      else await supabase.from('life_tasks').update({ is_completed: true }).eq('id', taskId);
+      if (task.is_recurring) {
+         await supabase.from('task_completions').insert([{ task_id: task.id, completed_date: selectedDate, user_id: user.id }]);
+      } else {
+         await supabase.from('life_tasks').update({ is_completed: true }).eq('id', taskId).eq('user_id', user.id);
+      }
       
       alert("Waktu Habis! Tugas otomatis dicentang hijau.");
       fetchTasks();

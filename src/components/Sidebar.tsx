@@ -38,6 +38,7 @@ export default function Sidebar() {
     { name: 'Money Analytics', href: '/finance/analytics'},
     { name: 'Wallet', href: '/finance/assets'},
     { name: 'Subscription', href: '/finance/recurring'},
+    { name: 'Budget', href: '/finance/recurring_goals'},
   ];
 
   const projectMenu = [
