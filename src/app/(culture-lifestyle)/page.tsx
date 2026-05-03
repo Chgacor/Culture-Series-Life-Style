@@ -146,11 +146,11 @@ export default function CommandCenterDashboard() {
   if (loading) return <div className="h-screen flex items-center justify-center font-mono">SYNCHRONIZING...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-20 p-4 md:p-8">
-      <header className="flex justify-between items-start">
-        <div>
-          <h2 className="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">Command Center <Terminal size={32} /></h2>
-          <p className="text-gray-500 mt-2 text-sm uppercase tracking-widest font-bold flex items-center gap-2">
+    <div className="max-w-7xl mx-auto space-y-6 md:space-y-8 pb-20 p-4 md:p-8">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="space-y-1">
+          <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">Command Center <Terminal className="hidden sm:block" size={32} /><Terminal className="sm:hidden" size={24} /></h2>
+          <p className="text-gray-500 text-[10px] md:text-sm uppercase tracking-widest font-bold flex items-center gap-2">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span> {aiStatus}
           </p>
         </div>
@@ -164,43 +164,43 @@ export default function CommandCenterDashboard() {
       </header>
 
       {/* METRICS ROW */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <MetricCard label="Liquidity" value={formatRp(metrics.totalLiquidity)} icon={<Wallet size={14}/>} />
         <MetricCard label="Spend" value={formatRp(todaySpend)} icon={<TrendingDown size={14}/>} color="text-red-500" />
         <MetricCard label="Sinking" value={formatRp(metrics.totalLocked)} icon={<Target size={14}/>} />
         <MetricCard label="Forge" value={metrics.activeForgeCount} icon={<Hammer size={14}/>} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
         {/* CHAT INTERFACE */}
-        <div className="lg:col-span-2 bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden h-[600px] flex flex-col shadow-xl">
+        <div className="lg:col-span-2 bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden h-[500px] md:h-[600px] flex flex-col shadow-xl">
            <div className="p-4 bg-gray-50 dark:bg-[#1A1A1A] border-b border-gray-100 dark:border-gray-800 font-bold text-sm flex items-center gap-2"><Bot size={18}/> AI Co-Pilot v2.5</div>
-           <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+           <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 no-scrollbar">
               {messages.map(m => (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-4 rounded-2xl text-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-gray-100 dark:bg-[#1F1F1F] text-gray-800 dark:text-gray-200 rounded-tl-none border border-gray-200 dark:border-gray-800'}`}>
+                  <div className={`max-w-[90%] md:max-w-[85%] p-3 md:p-4 rounded-2xl text-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-gray-100 dark:bg-[#1F1F1F] text-gray-800 dark:text-gray-200 rounded-tl-none border border-gray-200 dark:border-gray-800'}`}>
                     {renderChatText(m.text)}
                   </div>
                 </div>
               ))}
               <div ref={chatEndRef} />
            </div>
-           <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-              <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Tulis instruksi..." className="flex-1 bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition-all" />
-              <button className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"><Send size={18}/></button>
+           <form onSubmit={handleSendMessage} className="p-3 md:p-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
+              <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Tulis instruksi..." className="flex-1 bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-2.5 md:py-3 text-sm outline-none focus:border-blue-500 transition-all" />
+              <button className="bg-blue-600 text-white p-2.5 md:p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"><Send size={18}/></button>
            </form>
         </div>
 
         {/* SIDEBAR LOGS */}
         <div className="space-y-6">
-           <div className="bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 h-[280px] overflow-hidden flex flex-col">
+           <div className="bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-3xl p-5 md:p-6 h-[280px] overflow-hidden flex flex-col shadow-sm">
               <h3 className="text-sm font-bold mb-4 flex items-center gap-2"><BookOpen size={16} className="text-blue-500"/> Recent Ledger</h3>
-              <div className="space-y-3 flex-1 overflow-y-auto no-scrollbar">
+              <div className="space-y-2.5 flex-1 overflow-y-auto no-scrollbar">
                  {recentTrx.map(t => {
                    const { color, sign } = getTransactionInfo(t);
                    return (
-                     <div key={t.id} className="flex justify-between text-xs p-3 bg-gray-50 dark:bg-[#1A1A1A] rounded-xl">
-                        <span className="font-bold truncate max-w-[120px] dark:text-white">{t.description}</span>
+                     <div key={t.id} className="flex justify-between items-center text-xs p-3 bg-gray-50 dark:bg-[#1A1A1A] rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-gray-800 transition-all">
+                        <span className="font-bold truncate max-w-[100px] sm:max-w-[150px] dark:text-white">{t.description}</span>
                         <span className={`font-mono font-bold ${color}`}>{sign}{formatRp(t.amount)}</span>
                      </div>
                    );
@@ -208,11 +208,11 @@ export default function CommandCenterDashboard() {
               </div>
            </div>
            
-           <div className="bg-indigo-600 rounded-3xl p-6 text-white h-[280px] flex flex-col justify-between relative overflow-hidden group">
+           <div className="bg-indigo-600 rounded-3xl p-6 text-white h-[240px] md:h-[280px] flex flex-col justify-between relative overflow-hidden group shadow-lg shadow-indigo-500/20">
               <Zap className="absolute -right-4 -bottom-4 text-white/10 w-32 h-32" />
-              <h3 className="text-2xl font-black italic tracking-tighter">Daily Hub Nexus</h3>
-              <p className="text-sm opacity-80">Kamu memiliki {todaySchedule.length} task aktif hari ini. Lakukan eksekusi sekarang.</p>
-              <a href="/schedule/daily" className="bg-white/10 hover:bg-white/20 border border-white/20 p-4 rounded-2xl text-center font-bold text-sm backdrop-blur-md transition-all">Buka Schedule Nexus →</a>
+              <h3 className="text-xl md:text-2xl font-black italic tracking-tighter">Daily Hub Nexus</h3>
+              <p className="text-xs md:text-sm opacity-80 max-w-[200px]">Kamu memiliki {todaySchedule.length} task aktif hari ini. Lakukan eksekusi.</p>
+              <a href="/schedule/daily" className="bg-white/10 hover:bg-white/20 border border-white/20 py-3 md:p-4 rounded-2xl text-center font-bold text-sm backdrop-blur-md transition-all">Buka Schedule Nexus →</a>
            </div>
         </div>
       </div>
@@ -222,9 +222,9 @@ export default function CommandCenterDashboard() {
 
 function MetricCard({ label, value, icon, color = "text-gray-900 dark:text-white" }: any) {
   return (
-    <div className="bg-white dark:bg-[#151515] p-6 rounded-3xl border border-gray-200 dark:border-gray-800">
-      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">{icon} {label}</p>
-      <p className={`text-xl font-black font-mono ${color}`}>{value}</p>
+    <div className="bg-white dark:bg-[#151515] p-4 md:p-6 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm transition-all hover:shadow-md">
+      <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">{icon} {label}</p>
+      <p className={`text-lg md:text-xl font-black font-mono truncate ${color}`}>{value}</p>
     </div>
   );
 }

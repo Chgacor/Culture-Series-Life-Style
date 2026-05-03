@@ -97,7 +97,7 @@ export default function NotificationSystem({
       </button>
 
       {isNotifOpen && (
-        <div className="absolute right-0 mt-3 w-80 bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="absolute right-0 mt-3 w-[calc(100vw-2.5rem)] sm:w-80 bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
           <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-[#151515]">
             <h4 className="font-bold text-sm dark:text-white">Sinyal Kesadaran</h4>
             <button onClick={markAsRead} className="text-xs font-bold text-blue-600">Tandai Baca</button>
