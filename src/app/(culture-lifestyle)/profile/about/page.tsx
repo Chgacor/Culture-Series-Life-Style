@@ -35,35 +35,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   finance:  'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800/50',
 };
 
-// ─── THEME TOGGLE ──────────────────────────────────────────────────────────────
-function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
-  if (!mounted) return null;
-
-  const options = [
-    { value: 'light',  icon: <Sun size={13} />,     label: 'Light' },
-    { value: 'system', icon: <Monitor size={13} />, label: 'System' },
-    { value: 'dark',   icon: <Moon size={13} />,    label: 'Dark' },
-  ];
-
-  return (
-    <div className="flex items-center gap-0.5 p-1 rounded-xl bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/10">
-      {options.map(o => (
-        <button key={o.value} onClick={() => setTheme(o.value)} title={o.label}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
-            theme === o.value ? 'bg-white dark:bg-white/20 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80'
-          }`}
-        >
-          {o.icon} <span className="hidden sm:inline">{o.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ─── STAT CHIP ─────────────────────────────────────────────────────────────────
 function StatChip({ label, value, color }: { label: string; value: string; color: string }) {
   return (
@@ -398,7 +369,6 @@ export default function SystemIdentityDashboard() {
             <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white tracking-tight">System Identity</h1>
           </div>
           <div className="flex items-center gap-3">
-            <ThemeToggle />
             <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-xs font-bold transition-all w-fit">
               <LogOut size={14} /> Disconnect
             </button>
@@ -406,7 +376,6 @@ export default function SystemIdentityDashboard() {
         </header>
 
         <div className="relative overflow-hidden bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm">
-          <div className="absolute top-0 right-0 w-40 h-full opacity-10 pointer-events-none" style={{ background: `linear-gradient(135deg, ${protocolScore === 100 ? '#10B981' : '#3B82F6'}, transparent)` }} />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className={`p-3 rounded-2xl ${protocolScore === 100 ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-500' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-500'}`}>
